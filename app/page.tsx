@@ -1,69 +1,123 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import React, { useState, useSyncExternalStore } from 'react';
+import dynamic from 'next/dynamic';
+import { TabNavigation, ActiveTab } from '@/components/TabNavigation';
+import { Activity } from 'lucide-react';
+import { useTransactions } from '@/hooks/useTransactions';
+
+const HabitTrackerDashboard = dynamic(
+  () => import('@/components/HabitTrackerDashboard'),
+  {
+    ssr: false,
+    loading: () => <DashboardSkeleton text="Cargando Hábitos Saludables..." />,
+  }
+);
+
+const FinancePanel = dynamic(
+  () => import('@/components/finance/FinancePanel').then((mod) => mod.FinancePanel),
+  {
+    ssr: false,
+    loading: () => <DashboardSkeleton text="Cargando Finanzas Personales..." />,
+  }
+);
+
+const FinancialAIAssistantDrawer = dynamic(
+  () =>
+    import('@/components/finance/ai/FinancialAIAssistantDrawer').then(
+      (mod) => mod.FinancialAIAssistantDrawer
+    ),
+  { ssr: false }
+);
+
+function DashboardSkeleton({ text }: { text: string }) {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex flex-col items-center justify-center p-4">
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white animate-pulse">
+          <Activity className="w-5 h-5" />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <span className="text-xl font-bold text-zinc-900 dark:text-zinc-100">
+          {text}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const TAB_STORAGE_KEY = 'habitpulse_active_tab';
+
+const emptySubscribe = () => () => {};
+
+function getInitialTab(): ActiveTab {
+  if (typeof window === 'undefined') return 'habitos';
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    if (tabParam === 'finanzas' || tabParam === 'habitos') {
+      return tabParam;
+    }
+    const stored = localStorage.getItem(TAB_STORAGE_KEY);
+    if (stored === 'finanzas' || stored === 'habitos') {
+      return stored;
+    }
+  } catch {
+    // fallback
+  }
+  return 'habitos';
+}
+
+export default function Page() {
+  const isClientReady = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
+  const [activeTab, setActiveTab] = useState<ActiveTab>(getInitialTab);
+
+  // Hook de finanzas para persistir transacciones propuestas por la IA
+  const { addTransaction, todayTotal, monthExpensesTotal, budget } =
+    useTransactions();
+
+  const handleTabChange = (tab: ActiveTab) => {
+    setActiveTab(tab);
+    try {
+      localStorage.setItem(TAB_STORAGE_KEY, tab);
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', tab);
+      window.history.replaceState({}, '', url.toString());
+    } catch {
+      // Ignorar en modo privado estricto
+    }
+  };
+
+  const navSlot = (
+    <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} />
+  );
+
+  if (!isClientReady) {
+    return <DashboardSkeleton text="Cargando HabitPulse..." />;
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 relative">
+      {activeTab === 'habitos' ? (
+        <div role="tabpanel" id="panel-habitos" aria-labelledby="tab-habitos">
+          <HabitTrackerDashboard headerNav={navSlot} />
         </div>
-      </main>
+      ) : (
+        <div role="tabpanel" id="panel-finanzas" aria-labelledby="tab-finanzas">
+          <FinancePanel headerNav={navSlot} />
+        </div>
+      )}
+
+      {/* Asistente y Coach AI Flotante disponible en toda la app */}
+      <FinancialAIAssistantDrawer
+        onAddTransaction={addTransaction}
+        todayTotal={todayTotal}
+        monthExpensesTotal={monthExpensesTotal}
+        budget={budget}
+      />
     </div>
   );
 }
